@@ -1,0 +1,58 @@
+pipeline {
+    agent any
+
+    environment {
+        GITLAB_REPO = '192.168.1.8/user1/demo1.git'
+        DOCKER_IMAGE_FRONTEND = 'kocakabdussamed/frontend'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Checkout Code') {
+            steps {
+                withCredentials([string(credentialsId: 'gitlab-token-as-text', variable: 'GITLAB_TOKEN')]) {
+                    sh "git clone http://gitlab-token-as-text:${GITLAB_TOKEN}@${GITLAB_REPO}"
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh """
+                    cd demo1/frontend
+                    docker build -t ${DOCKER_IMAGE_FRONTEND}:${IMAGE_TAG} .
+                """
+            }
+        }
+
+        stage('Login to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                sh "docker push ${DOCKER_IMAGE_FRONTEND}:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Trigger Deploy Pipeline') {
+            steps {
+                echo "Triggering deploy-frontend with image ${DOCKER_IMAGE_FRONTEND}:${IMAGE_TAG}"
+                build job: 'deploy-frontend', wait: false, parameters: [
+                    string(name: 'IMAGE_NAME', value: "${DOCKER_IMAGE_FRONTEND}"),
+                    string(name: 'IMAGE_TAG', value: "${IMAGE_TAG}")
+                ]
+            }
+        }
+    }
+}

@@ -1,0 +1,63 @@
+pipeline {
+    agent any
+
+    environment {
+        GITLAB_REPO = '192.168.1.8/user1/demo1.git'
+    }
+
+    stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Checkout Code') {
+            steps {
+                withCredentials([string(credentialsId: 'gitlab-token-as-text', variable: 'GITLAB_TOKEN')]) {
+                    sh "git clone http://gitlab-token-as-text:${GITLAB_TOKEN}@${GITLAB_REPO}"
+                }
+            }
+        }
+
+        stage('Detect Changed Folders') {
+            steps {
+                script {
+                    def changedFiles = sh(
+                        script: "cd demo1 && git diff --name-only HEAD^ HEAD || git show --name-only --pretty='' HEAD",
+                        returnStdout: true
+                    ).trim().split("\n")
+
+                    echo "Changed files:\n${changedFiles.join('\n')}"
+
+                    def backendChanged = changedFiles.any { it.startsWith("backend/") }
+                    def frontendChanged = changedFiles.any { it.startsWith("frontend/") }
+
+                    if (backendChanged) {
+                        echo "Detected changes in backend/. Triggering backend build..."
+                        build job: 'build-backend', wait: false
+                    } else {
+                        echo "No backend changes detected."
+                    }
+
+                    if (frontendChanged) {
+                        echo "Detected changes in frontend/. Triggering frontend build..."
+                        build job: 'build-frontend', wait: false
+                    } else {
+                        echo "No frontend changes detected."
+                    }
+
+                    if (!backendChanged && !frontendChanged) {
+                        echo "No relevant changes detected. No builds triggered."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo "Dispatch pipeline failed. Please investigate."
+        }
+    }
+}

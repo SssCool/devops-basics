@@ -1,0 +1,50 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'IMAGE_NAME', defaultValue: '', description: 'Docker image name to deploy')
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag to deploy')
+    }
+
+    environment {
+        GITLAB_REPO = '192.168.1.8/user1/demo1.git'
+    }
+
+    stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Checkout Repository') {
+            steps {
+                withCredentials([string(credentialsId: 'gitlab-token-as-text', variable: 'GITLAB_TOKEN')]) {
+                    sh "git clone http://gitlab-token-as-text:${GITLAB_TOKEN}@${GITLAB_REPO} ."
+                }
+            }
+        }
+
+        stage('Update Kubernetes Manifest') {
+            steps {
+                script {
+                    def fullImage = "${params.IMAGE_NAME}:${params.IMAGE_TAG}"
+                    echo "Injecting image: ${fullImage}"
+                    sh "sed -i 's|IMAGE_PLACEHOLDER|${fullImage}|g' manifests/deploy-backend.yaml"
+                }
+            }
+        }
+
+        stage('Apply to Kubernetes') {
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig-file', variable: 'KUBECONFIG_FILE')]) {
+                    sh '''
+                        export KUBECONFIG=$KUBECONFIG_FILE
+                        kubectl config use-context $(kubectl config current-context)
+                        kubectl apply -f manifests/deploy-backend.yaml
+                    '''
+                }
+            }
+        }
+    }
+}
