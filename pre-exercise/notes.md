@@ -10,7 +10,7 @@ for gitlab:
 
 
 for jenkins:
-- first of all install necessary plugins (ws-cleaner, pipeline, gitlab etc.)
+- first of all install necessary plugins (ws-cleaner, pipeline, gitlab etc.) AND agent!!
 - add your credentials one by one (dont forget docker hub)
 - start to create pipelines, first dispatcher pipeline
 - create webhook on gitlab to trigger pipeline
